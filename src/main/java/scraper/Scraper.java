@@ -2,10 +2,14 @@ package scraper;
 
 import com.opencsv.CSVWriter;
 import jdk.internal.access.SharedSecrets;
+import legend.game.EngineState;
+import legend.game.EngineStateEnum;
+import legend.game.scripting.FlowControl;
 import legend.game.scripting.RunningScript;
 import legend.game.scripting.ScriptDescription;
 import legend.game.scripting.ScriptEnum;
 import legend.game.scripting.ScriptParam;
+import legend.game.types.OverlayStruct;
 import org.apache.commons.net.ftp.FTPClient;
 
 import java.io.FileWriter;
@@ -25,47 +29,58 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Function;
 
+import static legend.game.Scus94491BpeSegment_8004.gameStateOverlays_8004dbc0;
 import static legend.game.Scus94491BpeSegment_8004.scriptSubFunctions_8004e29c;
 
 public class Scraper {
-  public static void main(final String[] args) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException {
+  public static void main(final String[] args) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException {
     new Scraper().scrape();
   }
 
-  public void scrape() throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException {
+  public void scrape() throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException {
     final List<ScriptFunction> functions = new ArrayList<>();
     final Set<Class<Enum<?>>> allEnums = new HashSet<>();
 
     System.out.println("Scraping data...");
 
+    int total = 0;
     int missingDescription = 0;
     for(int i = 0; i < scriptSubFunctions_8004e29c.length; i++) {
-      // This is a major hack that could break at any time, but it's the only way I've found to trace a method ref
-      final Member member = SharedSecrets.getJavaLangAccess().getConstantPool(scriptSubFunctions_8004e29c[i].getClass()).getMethodAt(20);
+      final ScriptFunction scriptFunction = this.processFunction(i, scriptSubFunctions_8004e29c[i], functions, allEnums);
+      total++;
 
-      final Method method = member.getDeclaringClass().getMethod(member.getName(), RunningScript.class);
-      System.out.println(i + ": " + method.getDeclaringClass().getSimpleName() + "::" + method.getName());
-
-      final ScriptDescription descriptionAnnotation = method.getAnnotation(ScriptDescription.class);
-      final ScriptParam[] params = this.getAnnotations(method, ScriptParam.class);
-      final ScriptEnum[] enums = this.getAnnotations(method, ScriptEnum.class);
-
-      functions.add(new ScriptFunction(method.getDeclaringClass().getSimpleName() + "::" + method.getName(), descriptionAnnotation != null ? descriptionAnnotation.value() : "", params, enums));
-
-      for(final ScriptEnum e : enums) {
-        allEnums.add((Class<Enum<?>>)e.value());
-      }
-
-      if(descriptionAnnotation == null) {
+      if(scriptFunction.description.isEmpty()) {
         missingDescription++;
       }
     }
 
+    for(final EngineStateEnum state : EngineStateEnum.values()) {
+      final OverlayStruct overlayInfo = gameStateOverlays_8004dbc0.get(state);
+
+      if(overlayInfo != null) {
+        final EngineState overlay = overlayInfo.class_00.getConstructor().newInstance();
+
+        final Function<RunningScript, FlowControl>[] scriptFunctions = overlay.getScriptFunctions();
+
+        for(int i = 0; i < scriptFunctions.length; i++) {
+          if(scriptFunctions[i] != null) {
+            final ScriptFunction scriptFunction = this.processFunction(i, scriptFunctions[i], functions, allEnums);
+            total++;
+
+            if(scriptFunction.description.isEmpty()) {
+              missingDescription++;
+            }
+          }
+        }
+      }
+    }
+
     if(missingDescription == 0) {
-      System.out.println("Processed " + scriptSubFunctions_8004e29c.length + " script functions");
+      System.out.println("Processed " + total + " script functions");
     } else {
-      System.err.println("Missing " + missingDescription + '/' + scriptSubFunctions_8004e29c.length + " descriptions for script functions");
+      System.err.println("Missing " + missingDescription + '/' + total + " descriptions for script functions");
 
       for(final ScriptFunction function : functions) {
         if(function.description.isEmpty()) {
@@ -145,25 +160,37 @@ public class Scraper {
     final FTPClient ftp = new FTPClient();
     try {
       ftp.connect(credentials.getProperty("host"));
-      ftp.login(credentials.getProperty("username"), credentials.getProperty("password"));
+
+      if(!ftp.login(credentials.getProperty("username"), credentials.getProperty("password"))) {
+        throw new RuntimeException("Failed to log in");
+      }
+
       ftp.enterLocalPassiveMode();
 
       try(final InputStream fis = Files.newInputStream(descriptionsPath)) {
-        ftp.storeFile("descriptions.csv", fis);
+        if(!ftp.storeFile("descriptions.csv", fis)) {
+          throw new RuntimeException("Failed to upload descriptions.csv " + ftp.getReplyString());
+        }
       }
 
       try(final InputStream fis = Files.newInputStream(paramsPath)) {
-        ftp.storeFile("params.csv", fis);
+        if(!ftp.storeFile("params.csv", fis)) {
+          throw new RuntimeException("Failed to upload params.csv " + ftp.getReplyString());
+        }
       }
 
       try(final InputStream fis = Files.newInputStream(enumsPath)) {
-        ftp.storeFile("enums.csv", fis);
+        if(!ftp.storeFile("enums.csv", fis)) {
+          throw new RuntimeException("Failed to upload enums.csv");
+        }
       }
 
       for(final Class<Enum<?>> cls : allEnums) {
         final Path enumPath = Path.of(cls.getTypeName() + ".csv");
         try(final InputStream fis = Files.newInputStream(enumPath)) {
-          ftp.storeFile(enumPath.toString(), fis);
+          if(!ftp.storeFile(enumPath.toString(), fis)) {
+            throw new RuntimeException("Failed to upload %s.csv".formatted(cls.getTypeName()));
+          }
         }
       }
     } finally {
@@ -189,5 +216,36 @@ public class Scraper {
     }
 
     return all;
+  }
+
+  private ScriptFunction processFunction(final int index, final Function<RunningScript, FlowControl> function, final List<ScriptFunction> functions, final Set<Class<Enum<?>>> allEnums) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    // This is a major hack that could break at any time, but it's the only way I've found to trace a method ref
+    Member member;
+    try {
+      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(20);
+    } catch(final Exception e) {
+      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(25);
+    }
+
+    final Method method = member.getDeclaringClass().getDeclaredMethod(member.getName(), RunningScript.class);
+    System.out.println(index + ": " + method.getDeclaringClass().getSimpleName() + "::" + method.getName());
+
+    final ScriptDescription descriptionAnnotation = method.getAnnotation(ScriptDescription.class);
+    final ScriptParam[] params = this.getAnnotations(method, ScriptParam.class);
+    final ScriptEnum[] enums = this.getAnnotations(method, ScriptEnum.class);
+
+    final ScriptFunction scriptFunction = new ScriptFunction(method.getDeclaringClass().getSimpleName() + "::" + method.getName(), descriptionAnnotation != null ? descriptionAnnotation.value() : "", params, enums);
+
+    if(index >= functions.size()) {
+      functions.add(scriptFunction);
+    } else {
+      functions.set(index, scriptFunction);
+    }
+
+    for(final ScriptEnum e : enums) {
+      allEnums.add((Class<Enum<?>>)e.value());
+    }
+
+    return scriptFunction;
   }
 }
