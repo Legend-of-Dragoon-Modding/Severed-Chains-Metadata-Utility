@@ -11,6 +11,7 @@ import legend.game.scripting.ScriptEnum;
 import legend.game.scripting.ScriptParam;
 import legend.game.types.OverlayStruct;
 import org.apache.commons.net.ftp.FTPClient;
+import org.apache.commons.net.ftp.FTPSClient;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -157,15 +158,20 @@ public class Scraper {
 
     System.out.println("Uploading data...");
 
-    final FTPClient ftp = new FTPClient();
+    final FTPSClient ftp = new FTPSClient();
     try {
       ftp.connect(credentials.getProperty("host"));
 
       if(!ftp.login(credentials.getProperty("username"), credentials.getProperty("password"))) {
-        throw new RuntimeException("Failed to log in");
+        throw new RuntimeException("Failed to log in: " + ftp.getReplyString());
       }
 
       ftp.enterLocalPassiveMode();
+
+      // Set protection buffer size
+      ftp.execPBSZ(0);
+      // Set data channel protection to private
+      ftp.execPROT("P");
 
       try(final InputStream fis = Files.newInputStream(descriptionsPath)) {
         if(!ftp.storeFile("descriptions.csv", fis)) {
@@ -181,7 +187,7 @@ public class Scraper {
 
       try(final InputStream fis = Files.newInputStream(enumsPath)) {
         if(!ftp.storeFile("enums.csv", fis)) {
-          throw new RuntimeException("Failed to upload enums.csv");
+          throw new RuntimeException("Failed to upload enums.csv " + ftp.getReplyString());
         }
       }
 
@@ -189,7 +195,7 @@ public class Scraper {
         final Path enumPath = Path.of(cls.getTypeName() + ".csv");
         try(final InputStream fis = Files.newInputStream(enumPath)) {
           if(!ftp.storeFile(enumPath.toString(), fis)) {
-            throw new RuntimeException("Failed to upload %s.csv".formatted(cls.getTypeName()));
+            throw new RuntimeException("Failed to upload %s.csv %s".formatted(cls.getTypeName(), ftp.getReplyString()));
           }
         }
       }
