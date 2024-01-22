@@ -1,4 +1,4 @@
-package scraper;
+package org.legendofdragoon.meta;
 
 import com.opencsv.CSVWriter;
 import jdk.internal.access.SharedSecrets;
@@ -10,7 +10,12 @@ import legend.game.scripting.ScriptDescription;
 import legend.game.scripting.ScriptEnum;
 import legend.game.scripting.ScriptParam;
 import legend.game.types.OverlayStruct;
-import org.apache.commons.net.ftp.FTPClient;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.commons.net.ftp.FTPSClient;
 
 import java.io.FileWriter;
@@ -25,7 +30,6 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
@@ -37,10 +41,52 @@ import static legend.game.Scus94491BpeSegment_8004.scriptSubFunctions_8004e29c;
 
 public class Scraper {
   public static void main(final String[] args) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException {
-    new Scraper().scrape();
+    final Options options = new Options();
+    options.addOption("v", "version", true, "The version name to use for the upload");
+    options.addOption("h", "host", true, "The host for the upload");
+    options.addOption("u", "username", true, "The username for the upload");
+    options.addOption("p", "password", true, "The password for the upload");
+
+    final CommandLine cmd;
+    final CommandLineParser parser = new DefaultParser();
+    final HelpFormatter helper = new HelpFormatter();
+
+    try {
+      cmd = parser.parse(options, args);
+    } catch(final ParseException e) {
+      System.out.println(e.getMessage());
+      helper.printHelp("Usage:", options);
+      System.exit(1);
+      return;
+    }
+
+    final Path credentialsFile = Path.of("credentials.conf");
+    final Properties credentials;
+    if(!Files.exists(credentialsFile)) {
+      credentials = null;
+    } else {
+      credentials = new Properties();
+
+      try(final InputStream inputStream = Files.newInputStream(credentialsFile)) {
+        credentials.load(inputStream);
+      }
+    }
+
+    final String version = cmd.getOptionValue("version", "snapshot");
+    final String host = cmd.getOptionValue("host", credentials != null ? credentials.getProperty("host") : null);
+    final String username = cmd.getOptionValue("username", credentials != null ? credentials.getProperty("username") : null);
+    final String password = cmd.getOptionValue("password", credentials != null ? credentials.getProperty("password") : null);
+
+    if(host == null || username == null || password == null) {
+      helper.printHelp("Usage:", options);
+      System.exit(1);
+      return;
+    }
+
+    new Scraper().scrape(version, host, username, password);
   }
 
-  public void scrape() throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException {
+  public void scrape(final String version, final String host, final String username, final String password) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException {
     final List<ScriptFunction> functions = new ArrayList<>();
     final Set<Class<Enum<?>>> allEnums = new HashSet<>();
 
@@ -96,7 +142,7 @@ public class Scraper {
       final Path enumPath = Path.of(cls.getTypeName() + ".csv");
       Files.deleteIfExists(enumPath);
 
-      try (final CSVWriter csvEnum = new CSVWriter(new FileWriter(enumPath.toFile()));) {
+      try(final CSVWriter csvEnum = new CSVWriter(new FileWriter(enumPath.toFile()))) {
         for(final Enum<?> val : cls.getEnumConstants()) {
           csvEnum.writeNext(new String[] {val.name()});
         }
@@ -114,7 +160,7 @@ public class Scraper {
     // Keep a list of what functions have already been added so we don't write out duplicate params
     final Set<String> alreadyAdded = new HashSet<>();
 
-    try (
+    try(
       final CSVWriter csvDescriptions = new CSVWriter(new FileWriter(descriptionsPath.toFile()));
       final CSVWriter csvParams = new CSVWriter(new FileWriter(paramsPath.toFile()));
       final CSVWriter csvEnums = new CSVWriter(new FileWriter(enumsPath.toFile()))
@@ -144,25 +190,13 @@ public class Scraper {
       }
     }
 
-    final Path credentialsFile = Path.of("credentials.conf");
-    if(!Files.exists(credentialsFile)) {
-      System.out.println("No FTP credentials provided, skipping upload");
-      return;
-    }
-
-    final Properties credentials = new Properties();
-
-    try(final InputStream inputStream = Files.newInputStream(credentialsFile)) {
-      credentials.load(inputStream);
-    }
-
-    System.out.println("Uploading data...");
+    System.out.printf("Uploading data to %s...%n", version);
 
     final FTPSClient ftp = new FTPSClient();
     try {
-      ftp.connect(credentials.getProperty("host"));
+      ftp.connect(host);
 
-      if(!ftp.login(credentials.getProperty("username"), credentials.getProperty("password"))) {
+      if(!ftp.login(username, password)) {
         throw new RuntimeException("Failed to log in: " + ftp.getReplyString());
       }
 
@@ -174,6 +208,14 @@ public class Scraper {
       ftp.execPROT("P");
 
       try(final InputStream fis = Files.newInputStream(descriptionsPath)) {
+        if(!ftp.makeDirectory(version) && ftp.getReplyCode() != 550) { // 550 is "File exists"
+          throw new RuntimeException("Failed to create version directory " + ftp.getReplyString());
+        }
+
+        if(!ftp.changeWorkingDirectory(version)) {
+          throw new RuntimeException("Failed to cd to version directory " + ftp.getReplyString());
+        }
+
         if(!ftp.storeFile("descriptions.csv", fis)) {
           throw new RuntimeException("Failed to upload descriptions.csv " + ftp.getReplyString());
         }

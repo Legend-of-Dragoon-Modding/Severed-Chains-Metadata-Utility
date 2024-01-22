@@ -1,4 +1,4 @@
-package scraper;
+package org.legendofdragoon.meta;
 
 import legend.game.scripting.ScriptEnum;
 import legend.game.scripting.ScriptParam;

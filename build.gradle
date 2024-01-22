@@ -2,8 +2,8 @@ plugins {
   id 'java'
 }
 
-group = 'sc-meta-scraper'
-version = '1.0-SNAPSHOT'
+group = 'sc-meta-util'
+version = '1.0'
 
 sourceCompatibility = targetCompatibility = 1.21
 
@@ -22,4 +22,17 @@ dependencies {
   implementation "com.opencsv:opencsv:5.8"
   implementation "commons-net:commons-net:3.9.0"
   implementation "commons-cli:commons-cli:1.6.0"
+}
+
+jar {
+  manifest {
+    attributes(
+      'Main-Class': 'org.legendofdragoon.meta.Scraper'
+    )
+  }
+
+  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+  from {
+    configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+  }
 }
