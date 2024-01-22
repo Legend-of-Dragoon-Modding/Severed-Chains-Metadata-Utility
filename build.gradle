@@ -5,6 +5,13 @@ plugins {
 group = 'sc-meta-scraper'
 version = '1.0-SNAPSHOT'
 
+sourceCompatibility = targetCompatibility = 1.21
+
+compileJava {
+  options.encoding = 'UTF-8'
+  options.compilerArgs << '--add-exports' << 'java.base/jdk.internal.access=ALL-UNNAMED' << '--add-opens' << 'java.base/jdk.internal.access=ALL-UNNAMED' << '--add-exports' << 'java.base/jdk.internal.reflect=ALL-UNNAMED'
+}
+
 repositories {
   mavenCentral()
   mavenLocal()
@@ -14,4 +21,5 @@ dependencies {
   implementation "legend:lod:snapshot"
   implementation "com.opencsv:opencsv:5.8"
   implementation "commons-net:commons-net:3.9.0"
+  implementation "commons-cli:commons-cli:1.6.0"
 }
