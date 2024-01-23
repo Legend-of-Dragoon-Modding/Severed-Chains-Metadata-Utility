@@ -2,6 +2,12 @@ plugins {
   id 'java'
 }
 
+project.ext.hash = System.getenv("GITHUB_SHA");
+
+if(project.ext.hash == null) {
+  project.ext.hash = 'snapshot'
+}
+
 group = 'sc-meta-util'
 version = '1.0'
 
@@ -18,7 +24,7 @@ repositories {
 }
 
 dependencies {
-  implementation "legend:lod:snapshot"
+  implementation "legend:lod:${project.ext.hash}"
   implementation "com.opencsv:opencsv:5.8"
   implementation "commons-net:commons-net:3.9.0"
   implementation "commons-cli:commons-cli:1.6.0"
