@@ -2,6 +2,7 @@
   <configuration default="false" name="run" type="Application" factoryName="Application">
     <option name="MAIN_CLASS_NAME" value="org.legendofdragoon.meta.Scraper" />
     <module name="sc-meta-scraper.main" />
+    <option name="PROGRAM_PARAMETERS" value="$Prompt$" />
     <option name="VM_PARAMETERS" value="--add-exports java.base/jdk.internal.access=ALL-UNNAMED --add-opens java.base/jdk.internal.access=ALL-UNNAMED --add-exports java.base/jdk.internal.reflect=ALL-UNNAMED" />
     <method v="2">
       <option name="Make" enabled="true" />
