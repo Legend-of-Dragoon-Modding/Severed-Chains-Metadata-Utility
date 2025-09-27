@@ -270,9 +270,9 @@ public class Scraper {
     // This is a major hack that could break at any time, but it's the only way I've found to trace a method ref
     Member member;
     try {
-      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(20);
+      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(18);
     } catch(final Exception e) {
-      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(25);
+      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(23);
     }
 
     final Method method = member.getDeclaringClass().getDeclaredMethod(member.getName(), RunningScript.class);
