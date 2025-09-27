@@ -11,7 +11,9 @@ if(project.ext.hash == null) {
 group = 'sc-meta-util'
 version = '1.0'
 
-sourceCompatibility = targetCompatibility = 1.21
+java {
+  sourceCompatibility = targetCompatibility = JavaVersion.VERSION_25
+}
 
 compileJava {
   options.encoding = 'UTF-8'
@@ -21,8 +23,8 @@ compileJava {
 repositories {
   mavenCentral()
   mavenLocal()
-  maven { url "https://central.sonatype.com/repository/maven-snapshots/" }
-  maven { url "https://jitpack.io" }
+  maven { url = "https://central.sonatype.com/repository/maven-snapshots/" }
+  maven { url = "https://jitpack.io" }
 }
 
 dependencies {
