@@ -36,7 +36,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
 
-import static legend.game.Scus94491BpeSegment_8004.gameStateOverlays_8004dbc0;
+import static legend.game.EngineStates.gameStateOverlays_8004dbc0;
 import static legend.game.Scus94491BpeSegment_8004.scriptSubFunctions_8004e29c;
 
 public class Scraper {
