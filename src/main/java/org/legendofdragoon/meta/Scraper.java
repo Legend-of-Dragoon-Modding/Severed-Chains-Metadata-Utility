@@ -2,14 +2,14 @@ package org.legendofdragoon.meta;
 
 import com.opencsv.CSVWriter;
 import jdk.internal.access.SharedSecrets;
+import legend.core.GameEngine;
 import legend.game.EngineState;
-import legend.game.EngineStateEnum;
+import legend.game.EngineStateType;
 import legend.game.scripting.FlowControl;
 import legend.game.scripting.RunningScript;
 import legend.game.scripting.ScriptDescription;
 import legend.game.scripting.ScriptEnum;
 import legend.game.scripting.ScriptParam;
-import legend.game.types.OverlayStruct;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -17,6 +17,11 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.net.ftp.FTPSClient;
+import org.legendofdragoon.modloader.ModManager;
+import org.legendofdragoon.modloader.events.EventManager;
+import org.legendofdragoon.modloader.registries.Registries;
+import org.legendofdragoon.modloader.registries.Registry;
+import org.legendofdragoon.modloader.registries.RegistryId;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -24,6 +29,7 @@ import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Repeatable;
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
@@ -36,16 +42,17 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
 
-import static legend.game.EngineStates.gameStateOverlays_8004dbc0;
+import static legend.core.GameEngine.REGISTRIES;
 import static legend.game.Scus94491BpeSegment_8004.scriptSubFunctions_8004e29c;
 
 public class Scraper {
-  public static void main(final String[] args) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException {
+  public static void main(final String[] args) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchFieldException {
     final Options options = new Options();
     options.addOption("v", "version", true, "The version name to use for the upload");
     options.addOption("h", "host", true, "The host for the upload");
     options.addOption("u", "username", true, "The username for the upload");
     options.addOption("p", "password", true, "The password for the upload");
+    options.addOption("n", "no-upload", false, "Scrape meta without uploading");
 
     final CommandLine cmd;
     final CommandLineParser parser = new DefaultParser();
@@ -76,17 +83,41 @@ public class Scraper {
     final String host = cmd.getOptionValue("host", credentials != null ? credentials.getProperty("host") : null);
     final String username = cmd.getOptionValue("username", credentials != null ? credentials.getProperty("username") : null);
     final String password = cmd.getOptionValue("password", credentials != null ? credentials.getProperty("password") : null);
+    final boolean noUpload = cmd.hasOption("no-upload");
 
-    if(host == null || username == null || password == null) {
+    if(!noUpload && (host == null || username == null || password == null)) {
       helper.printHelp("Usage:", options);
       System.exit(1);
       return;
     }
 
-    new Scraper().scrape(version, host, username, password);
+    new Scraper().scrape(version, host, username, password, noUpload);
   }
 
-  public void scrape(final String version, final String host, final String username, final String password) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException {
+  private void bootEventBus() throws NoSuchFieldException, NoSuchMethodException, IllegalAccessException, InvocationTargetException {
+    final Field REGISTRY_ACCESS = GameEngine.class.getDeclaredField("EVENT_ACCESS");
+    REGISTRY_ACCESS.setAccessible(true);
+
+    final Method initialize = EventManager.Access.class.getMethod("initialize", ModManager.class);
+
+    initialize.invoke(REGISTRY_ACCESS.get(null), GameEngine.MODS);
+  }
+
+  private void bootEngineStateTypeRegistry() throws NoSuchFieldException, NoSuchMethodException, IllegalAccessException, InvocationTargetException {
+    final Field REGISTRY_ACCESS = GameEngine.class.getDeclaredField("REGISTRY_ACCESS");
+    REGISTRY_ACCESS.setAccessible(true);
+
+    final Method initialize = Registries.Access.class.getMethod("initialize", Registry.class);
+
+    initialize.invoke(REGISTRY_ACCESS.get(null), REGISTRIES.engineStateTypes);
+  }
+
+  public void scrape(final String version, final String host, final String username, final String password, final boolean noUpload) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchFieldException {
+    System.out.println("Booting registries...");
+
+    this.bootEventBus();
+    this.bootEngineStateTypeRegistry();
+
     final List<ScriptFunction> functions = new ArrayList<>();
     final Set<Class<Enum<?>>> allEnums = new HashSet<>();
 
@@ -103,22 +134,20 @@ public class Scraper {
       }
     }
 
-    for(final EngineStateEnum state : EngineStateEnum.values()) {
-      final OverlayStruct overlayInfo = gameStateOverlays_8004dbc0.get(state);
+    for(final RegistryId typeId : REGISTRIES.engineStateTypes) {
+      final EngineStateType<?> type = REGISTRIES.engineStateTypes.getEntry(typeId).get();
 
-      if(overlayInfo != null) {
-        final EngineState overlay = overlayInfo.class_00.getConstructor().newInstance();
+      final EngineState overlay = type.class_00.getConstructor().newInstance();
 
-        final Function<RunningScript, FlowControl>[] scriptFunctions = overlay.getScriptFunctions();
+      final Function<RunningScript, FlowControl>[] scriptFunctions = overlay.getScriptFunctions();
 
-        for(int i = 0; i < scriptFunctions.length; i++) {
-          if(scriptFunctions[i] != null) {
-            final ScriptFunction scriptFunction = this.processFunction(i, scriptFunctions[i], functions, allEnums);
-            total++;
+      for(int i = 0; i < scriptFunctions.length; i++) {
+        if(scriptFunctions[i] != null) {
+          final ScriptFunction scriptFunction = this.processFunction(i, scriptFunctions[i], functions, allEnums);
+          total++;
 
-            if(scriptFunction.description.isEmpty()) {
-              missingDescription++;
-            }
+          if(scriptFunction.description.isEmpty()) {
+            missingDescription++;
           }
         }
       }
@@ -188,6 +217,11 @@ public class Scraper {
       for(final Class<Enum<?>> val : allEnums) {
         csvEnums.writeNext(new String[] {val.getTypeName()});
       }
+    }
+
+    if(noUpload) {
+      System.out.println("Uploading disabled, exiting");
+      return;
     }
 
     System.out.printf("Uploading data to %s...%n", version);
