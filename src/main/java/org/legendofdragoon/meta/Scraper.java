@@ -5,6 +5,7 @@ import jdk.internal.access.SharedSecrets;
 import legend.core.GameEngine;
 import legend.game.EngineState;
 import legend.game.EngineStateType;
+import legend.game.Scus94491BpeSegment;
 import legend.game.scripting.FlowControl;
 import legend.game.scripting.RunningScript;
 import legend.game.scripting.ScriptDescription;
@@ -43,7 +44,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static legend.core.GameEngine.REGISTRIES;
-import static legend.game.Scus94491BpeSegment_8004.scriptSubFunctions_8004e29c;
+import static legend.game.Scus94491BpeSegment_8004.getScriptFunction;
 
 public class Scraper {
   public static void main(final String[] args) throws NoSuchMethodException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchFieldException {
@@ -125,8 +126,8 @@ public class Scraper {
 
     int total = 0;
     int missingDescription = 0;
-    for(int i = 0; i < scriptSubFunctions_8004e29c.length; i++) {
-      final ScriptFunction scriptFunction = this.processFunction(i, scriptSubFunctions_8004e29c[i], functions, allEnums);
+    for(int i = 0; i < 1024; i++) {
+      final ScriptFunction scriptFunction = this.processFunction(i, getScriptFunction(i), functions, allEnums);
       total++;
 
       if(scriptFunction.description.isEmpty()) {
@@ -141,13 +142,15 @@ public class Scraper {
 
       final Function<RunningScript, FlowControl>[] scriptFunctions = overlay.getScriptFunctions();
 
-      for(int i = 0; i < scriptFunctions.length; i++) {
-        if(scriptFunctions[i] != null) {
-          final ScriptFunction scriptFunction = this.processFunction(i, scriptFunctions[i], functions, allEnums);
-          total++;
+      if(scriptFunctions != null) {
+        for(int i = 0; i < scriptFunctions.length; i++) {
+          if(scriptFunctions[i] != null) {
+            final ScriptFunction scriptFunction = this.processFunction(i, scriptFunctions[i], functions, allEnums);
+            total++;
 
-          if(scriptFunction.description.isEmpty()) {
-            missingDescription++;
+            if(scriptFunction.description.isEmpty()) {
+              missingDescription++;
+            }
           }
         }
       }
@@ -301,15 +304,22 @@ public class Scraper {
   }
 
   private ScriptFunction processFunction(final int index, final Function<RunningScript, FlowControl> function, final List<ScriptFunction> functions, final Set<Class<Enum<?>>> allEnums) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-    // This is a major hack that could break at any time, but it's the only way I've found to trace a method ref
-    Member member;
-    try {
-      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(18);
-    } catch(final Exception e) {
-      member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(23);
+    final Method method;
+
+    if(function != null) {
+      // This is a major hack that could break at any time, but it's the only way I've found to trace a method ref
+      Member member;
+      try {
+        member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(18);
+      } catch(final Exception e) {
+        member = SharedSecrets.getJavaLangAccess().getConstantPool(function.getClass()).getMethodAt(23);
+      }
+
+      method = member.getDeclaringClass().getDeclaredMethod(member.getName(), RunningScript.class);
+    } else {
+      method = Scus94491BpeSegment.class.getDeclaredMethod("scriptRewindAndPause2", RunningScript.class);
     }
 
-    final Method method = member.getDeclaringClass().getDeclaredMethod(member.getName(), RunningScript.class);
     System.out.println(index + ": " + method.getDeclaringClass().getSimpleName() + "::" + method.getName());
 
     final ScriptDescription descriptionAnnotation = method.getAnnotation(ScriptDescription.class);
