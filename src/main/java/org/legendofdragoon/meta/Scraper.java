@@ -6,11 +6,13 @@ import legend.core.GameEngine;
 import legend.game.EngineState;
 import legend.game.EngineStateType;
 import legend.game.Scus94491BpeSegment;
+import legend.game.modding.coremod.CoreMod;
 import legend.game.scripting.FlowControl;
 import legend.game.scripting.RunningScript;
 import legend.game.scripting.ScriptDescription;
 import legend.game.scripting.ScriptEnum;
 import legend.game.scripting.ScriptParam;
+import legend.lodmod.LodMod;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -39,6 +41,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
@@ -105,6 +108,13 @@ public class Scraper {
   }
 
   private void bootEngineStateTypeRegistry() throws NoSuchFieldException, NoSuchMethodException, IllegalAccessException, InvocationTargetException {
+    final Field pathToModIdField = ModManager.class.getDeclaredField("pathToModId");
+    pathToModIdField.setAccessible(true);
+    final Map<?, ?> pathToModId = (Map<?, ?>)pathToModIdField.get(GameEngine.MODS);
+
+    final Method mapPut = Map.class.getMethod("put", Object.class, Object.class);
+    mapPut.invoke(pathToModId, LodMod.class.getProtectionDomain().getCodeSource().getLocation().toString(), Set.of(CoreMod.MOD_ID, LodMod.MOD_ID));
+
     final Field REGISTRY_ACCESS = GameEngine.class.getDeclaredField("REGISTRY_ACCESS");
     REGISTRY_ACCESS.setAccessible(true);
 
