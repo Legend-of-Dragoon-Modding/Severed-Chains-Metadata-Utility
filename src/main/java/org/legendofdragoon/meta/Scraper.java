@@ -127,6 +127,7 @@ public class Scraper {
     System.out.println("Booting registries...");
 
     this.bootEventBus();
+    new LodMod();
     this.bootEngineStateTypeRegistry();
 
     final List<ScriptFunction> functions = new ArrayList<>();
